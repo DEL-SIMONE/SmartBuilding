@@ -1,0 +1,447 @@
+import clr
+import os
+import pathlib
+import sys
+import System
+from System.Collections.Generic import List
+
+#p/ usa biblioteca colar na funcao
+#sys.path.append(path_parent2)
+#path_parent2 = os.path.join(str(script_path.parent.parent.parent), "libs")
+#import GerProject
+
+#lOCALIZACAO DA PASTA COM AS BIBLIOTECAS
+script_path = pathlib.Path(__file__).parent.absolute()
+path_parent = os.path.join(str(script_path.parent), "libs")
+
+sys.path.append(path_parent)
+
+#DEMAIS BIBLIOTECAS
+from System.Collections.Generic import*
+
+from RVTAPI import APIFUNC
+
+#pylint: disable=E0401,C0103
+from pyrevit import*
+from pyrevit import forms
+from pyrevit.revit import files
+from pyrevit.revit import RevitWrapper
+from pyrevit import script
+from pyrevit import EXEC_PARAMS, HOST_APP, DOCS
+
+from Autodesk.Revit.DB import Transaction
+
+# Dynamo Nodes
+clr.AddReference("RevitNodes")
+import Revit
+
+
+try:
+    clr.AddReference('RevitAPI')
+    clr.ImportExtensions(Revit)
+    clr.ImportExtensions(Revit.Elements)
+    from Autodesk.Revit.DB import *
+
+    clr.AddReference('RevitServices')
+    from RevitServices.Persistence import DocumentManager
+    from RevitServices.Transactions import TransactionManager
+
+except:
+    pass
+
+#========
+#ARQUIVOS 
+
+uidoc = __revit__.ActiveUIDocument
+doc = __revit__.ActiveUIDocument.Document
+app = doc.Application
+docs = app.Documents
+
+#LISTA TODAS AS CATEGORIAS
+categorias = doc.Settings.Categories
+lista_Categorias = []
+cat = []
+
+def open(doc_path):
+    return HOST_APP.app.OpenDocumentFile(doc_path)
+
+for i in categorias:
+    lista_Categorias.append(i.Name)
+    cat.append(i)
+
+#**********************************************************************
+#FUNCOES GerProject
+#By Simone Behling
+
+#>>> CATEGORIA E PARAMETROS <<<
+def catCategorias(cat, tipo = 0, Tdoc = doc):
+    """
+    >> Seleciona elementos da categoria escolhida.
+    param cat: categoria
+    param tipo: se e parametro de tipo (1) ou instancia (0)
+    param Tdoc: documento
+    """
+    categorias = Tdoc.Settings.Categories
+    Elementos = ""
+    for i in categorias:
+        if i.Name == cat:
+            print(cat)
+            #SELECIONA TODOS OS TIPOS DA CATEGORIA
+            if tipo == 1:
+                Elementos= FilteredElementCollector(Tdoc)\
+                                                .OfCategoryId(i.Id).WhereElementIsElementType().ToElements()
+            #SELECIONA TODAS AS INSTANCIAS DA CATEGORIA
+            if tipo == 0:
+                Elementos = FilteredElementCollector(Tdoc)\
+                                                .OfCategoryId(i.Id).WhereElementIsNotElementType().ToElements()   
+        
+    return Elementos
+
+def GetTypes(ele):
+    """
+    >> Pega o nome do tipo.
+    param ele: elemento
+    """
+    Tipo = ele.LookupParameter("Type")
+    nomeTipo = Tipo.AsValueString()
+
+    return nomeTipo
+
+#TRANSFORMA VALOR NO TIPO DE VALOR CERTO
+def ajustaTipo(par, val):
+    """
+    >> Transforma valor no tipo de valor certo.
+    param par:
+    param val: 
+    """
+    #print(par)
+    #print(str(par.StorageType))
+    if str(par.StorageType) == "String":
+        valor = str(val)
+
+    if str(par.StorageType) == "Integer":
+        valor = int(val)
+
+    if str(par.StorageType) == "Double":
+        valor = float(val)
+    
+    if str(par.StorageType) == "ElementId":
+                print("Nao rola, Ids nao podem ser definidos pelo usuario")
+   
+    return valor
+
+#CONFERE INPUT DO USUARIO
+#Tipos de input:
+# 0 = sim e nao
+# 1 = 0 e 1
+# 2 = categoria
+# 3 = parametro
+
+def confereInput(inputUser, input, msg, ele):
+    count = 10
+    for i in range(0,count):
+        if input == 0:
+            if ((inputUser == "s") or (inputUser == "n")):
+                return inputUser
+            else: 
+                print("Valor invalido!")
+                print(count-i)
+                inputUser = raw_input(msg)
+        if input == 1:
+            if ((inputUser == 0) or (inputUser == 1)):
+                return inputUser
+            if ((inputUser == "0") or (inputUser == "1")):
+                return inputUser
+            else:
+                print("Valor invalido!")
+                print(count-i)
+                inputUser = raw_input(msg)
+        if input == 2:
+            for j in lista_Categorias:
+                if (j == inputUser):
+                    flag = 1
+                    break
+                else:
+                    flag = 0
+
+            if flag == 1:
+                return inputUser
+            if flag == 0:
+                print("Valor invalido!")
+                print(count-i)
+                inputUser = raw_input(msg)
+
+        if input == 3:
+            parametros = ele[1].Parameters
+            NomesParametros = []
+            for x in parametros:
+                NomesParametros.append(x.Definition.Name)
+            for j in NomesParametros:
+                if (j == inputUser):
+                    flag = 1
+                    break
+                else:
+                    flag = 0
+
+            if flag == 1:
+                return inputUser
+            if flag == 0:
+                print("Valor invalido!")
+                print(count-i)
+                inputUser = raw_input(msg)
+        
+    return inputUser
+
+#printa elementos
+
+def printCat(eles):
+    for e in eles:
+        print(e.Name)
+
+
+
+#>>> DOCUMENTACAO <<<
+
+#PRINTA INFORMACOES DE INPUT
+def RelatorioInputs(IputVal, par, cat, parRest, valRest):
+
+    filtro = "<"
+    if YesNo == "s":
+        filtro = ("que possuiam o parametro  >" + parRest + "<  igual a  >" + valRest + "<")
+
+    print("***************RELATORIO DE INPUTS******************")
+    print("O valor  >" + IputVal + "<  foi aplicado ao parametro  >" + par + "<  em todos os(as)  >" + cat + filtro)
+
+#ARQUIVOS EXTERNOS (RVT)
+
+#Abre arquivo
+def open(doc_path):
+    return HOST_APP.app.OpenDocumentFile(doc_path)
+
+def close(doc_path):
+        """Close given document.
+
+        Args:
+            doc (DB.Document): document
+        """
+        return doc_path.Close()
+
+
+#Printa Informacoes sobre o arquivo 
+def rvtFile(rvt_file):                              
+    if rvt_file:
+        mfile = files.get_file_info(rvt_file)
+        fileRVT = str(mfile)
+        print(fileRVT)
+        #Abre o arquivo
+        #FileRvt = open(rvt_file)
+        print("=============================")
+        #print(FileRvt)
+        print("Informacoes sobre o arquivo:" )
+        print("Created in: {0} ({1}({2}))".format(mfile.RevitProduct.Name,
+                                                mfile.RevitProduct.BuildNumber,
+                                                mfile.RevitProduct.BuildTarget))
+        print("Workshared: {0}".format("Yes" if mfile.IsWorkshared else "No"))
+        if mfile.IsWorkshared:
+            print("Central Model Path: {0}".format(mfile.CentralModelPath))
+        print("Last Saved Path: {0}".format(mfile.LastSavedPath))
+        print("Document Id: {0}".format(mfile.UniqueId))
+        print("Open Workset Settings: {0}".format(mfile.OpenWorksetConfig))
+        print("Document Increment: {0}".format(mfile.DocumentIncrement))
+
+        print("Project Information (Properties):")
+        for k, v in sorted(dict(mfile.ProjectInfoProperties).items()):
+            print('\t{} = {}'.format(k, v))
+
+        if mfile.IsFamily:
+            print("Model is a Revit Family!")
+            print("Category Name: {0}".format(mfile.CategoryName))
+            print("Host Category Name: {0}".format(mfile.HostCategoryName))
+        print("=============================")
+
+
+#>>> AREA E VOLUME <<<
+
+def calculateVolume (ele):
+    volumeEleTnt = 0
+    cat = ele.Category.Name
+    print(cat)
+    if cat == "Structural Connections" or cat == "Structural Framing" or cat == "Structural Framing (Other)":
+        parVol = ele.LookupParameter("Volume")
+        volumeEleTnt = parVol.AsDouble()
+        #print(volumeEleTnt)
+        return volumeEleTnt
+    if cat == "Structural Foundations":
+        parVol = ele.LookupParameter("Volume")
+        volumeEleTnt = parVol.AsDouble()
+        volumeEleTnt = - volumeEleTnt
+        return volumeEleTnt
+
+    return volumeEleTnt
+
+
+def calculateVolumeSTR (ele):
+    volumeEleTnt = 0
+    cat = ele.Category.Name
+    if cat == "Structural Columns" or cat == "Structural Columns" or cat == "Structural Connections" or cat == "Structural Framing" or cat == "Structural Framing (Other)" or cat == "Structural Foundations":
+        subelementos = GetSubelements(ele)
+        parVol = ele.LookupParameter("Volume")
+        volumeEle = float(parVol.AsValueString())
+        #print(volumeEle)
+        volumeEleTnt = parVol.AsDouble()
+        #print(volumeEleTnt)
+        
+        return volumeEle
+    return volumeEle
+
+
+def FiltraEle(categoria):
+    elementos = []
+    for c in categoria:
+        cat = c.Name
+        if cat == "Structural Columns" or cat == "Structural Connections" or cat == "Structural Framing" or cat == "Structural Framing (Other)" or cat == "Structural Foundations":
+            elementos.append(c)
+    
+    return elementos
+
+def FiltraEleCat(categoria, nome):
+    #categorias = doc.Settings.Categories
+    elementos = []
+    #nome = "Structural Columns"
+    for c in categoria:
+        cat = c.Name
+        if cat == nome:
+            elementos.append(c)
+    
+    return elementos
+
+#(lista com o nome de cada elemento, lista | ex > element.Name, element)
+def uniqueName(ListName, list1):
+    # initialize a null list
+    unique_list = []
+    listOut = []
+    # traverse for all elements
+    for n, e in zip(ListName, list1):
+        # check if exists in unique_list or not
+        if n not in unique_list:
+            unique_list.append(n)
+            listOut.append(e)
+    # print list
+    #for x in unique_list:
+    #    print(x);
+
+    return listOut
+
+def unique(list1):
+    # initialize a null list
+    unique_list = []
+
+    # traverse for all elements
+    for x in list1:
+        # check if exists in unique_list or not
+        if x not in unique_list:
+            unique_list.append(x)
+    # print list
+    for x in unique_list:
+        print(x);
+
+    return unique_list
+
+#Filtra elementos de uma lista usando um parametro como restricao e um valor que este devera conter
+def filtro(ele):
+    print("ex1 > elementos c/ parametro: \n Level = PAV 1 \n ex2> elementos com parametro: \n Type = Tubos pvc Tigre")
+    print("Level, Type (parametro de restricao)")
+    print("PAV 1, Tubos pvc Tigre (valor do parametro)")
+    msg = "\nQual o parametro que voce deseja usar como restricao?"
+    ParRestricao = raw_input(msg)
+    ParRestricao = confereInput(ParRestricao, 3, msg, ele)
+    print("> "+ ParRestricao)
+    ValRestricao = raw_input("Qual o valor x que esse parametro devera POSSUIR ou NAO POSSUIR")
+    print("> "+ ValRestricao)
+    msg = ("Todos os elementos que possuam o parametro com um valor igual a x (valor informado) -> 1 \
+        \n Todos os elementos que NAO possuam o parametro com um valor diferente de x (valor informado) -> 0")
+    print(msg)
+    tipoRestricao = input()
+    tipoRestricao = confereInput(tipoRestricao, 1, msg, ele)
+    print("> ")
+    print(tipoRestricao)
+    
+    ListElementClean = []
+    for j in ele:
+        GetRestricao = j.LookupParameter(ParRestricao)
+        GetValor = GetRestricao.AsValueString()
+        #valor = ajustaTipo(GetRestricao, GetValor)
+        if tipoRestricao == 1:
+            if GetValor == ValRestricao:
+                ListElementClean.append(j)
+        if tipoRestricao == 0:
+            if GetValor != ValRestricao:
+                ListElementClean.append(j)
+    
+    return ListElementClean
+
+
+#TRANSFORMA VALOR NO TIPO DE VALOR CERTO
+def GetVal(par):
+    print(par)
+    print(str(par.StorageType))
+    if str(par.StorageType) == "String":
+        valor = par.AsValueString()
+        return valor
+
+    if str(par.StorageType) == "Integer":
+        valor = par.AsInteger()
+        return valor
+
+    if str(par.StorageType) == "Double":
+        valor = par.AsDouble()
+        return valor
+    
+    if str(par.StorageType) == "ElementId":
+        print("Nao rola, Ids nao podem ser definidos pelo usuario")
+        return 0
+
+    else:
+        print("Nao e int, float, id ou string. Sera retornado como string")
+        valor = par.AsValueString()
+        return valor
+    
+def apagaVal(par):
+    s = Transaction(doc, "search")
+    s.Start()
+    
+    par.Set(0)
+
+    s.Commit()
+    s.Dispose()
+
+def SelectLink():
+    rvt_file = forms.pick_file(files_filter='Revit Files |*.rvt;*.rte;*.rfa|'
+                                        'Revit Model |*.rvt|'
+                                        'Revit Template |*.rte|'
+                                        'Revit Family |*.rfa')
+    
+    FileRvt = open(rvt_file)
+    rvtFile(rvt_file)
+
+    return FileRvt
+
+def SelectCategories(cat):
+    """
+    >> Seleciona as categorias escolhidas.
+    param cat: todas as categorias do modelo
+    """
+    msg = "Quais categorias?"
+    print("\n *digite > fim < quando nao quiser adicionar mais nenhuma categoria")
+    categoria = "s"
+    listaCategorias = []
+    while (categoria != "fim"):
+        categoria = raw_input(msg)
+        EleCategoria = catCategorias(categoria)
+        if EleCategoria == None or EleCategoria == "":
+            print("Categoria invalida!")
+        else:
+            listaCategorias.append(categoria)
+    
+    return listaCategorias
+    
